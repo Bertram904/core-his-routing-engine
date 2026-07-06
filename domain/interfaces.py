@@ -119,6 +119,63 @@ class IEncryptionStrategy(ABC):
         """
 
 
+class IPasswordHasher(ABC):
+    """Contract for one-way password hashing and verification."""
+
+    @abstractmethod
+    def hash_password(self, plain_password: str) -> str:
+        """Hash a plaintext password for secure storage.
+
+        Args:
+            plain_password: Raw password supplied by the user.
+
+        Returns:
+            Encoded password hash string.
+        """
+
+    @abstractmethod
+    def verify_password(self, plain_password: str, hashed_password: str) -> bool:
+        """Verify a plaintext password against a stored hash.
+
+        Args:
+            plain_password: Raw password to verify.
+            hashed_password: Previously stored password hash.
+
+        Returns:
+            ``True`` if the password matches, otherwise ``False``.
+        """
+
+
+class ITokenService(ABC):
+    """Contract for JWT access-token creation and validation."""
+
+    @abstractmethod
+    def create_access_token(self, subject: str, scopes: list[str]) -> str:
+        """Create a signed JWT access token.
+
+        Args:
+            subject: Unique principal identifier (typically username).
+            scopes: Fine-grained permission scopes embedded in the token.
+
+        Returns:
+            Encoded JWT string.
+        """
+
+    @abstractmethod
+    def decode_access_token(self, token: str) -> Any:
+        """Decode and validate a JWT access token.
+
+        Args:
+            token: Encoded JWT string from the Authorization header.
+
+        Returns:
+            Parsed token payload object.
+
+        Raises:
+            ValueError: If the token is invalid or expired.
+        """
+
+
 class IPdfGenerator(ABC):
     """Contract for generating PDF documents from structured data."""
 
