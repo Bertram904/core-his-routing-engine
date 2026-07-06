@@ -1,0 +1,1 @@
+"""PDF generation infrastructure adapters."""
