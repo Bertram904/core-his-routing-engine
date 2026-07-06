@@ -5,7 +5,15 @@ import asyncio
 from sqlalchemy import select
 
 from core.security import get_password_hasher
-from domain.models import Permission, Role, RolePermission, User
+from domain.models import (
+    Patient,
+    Permission,
+    Role,
+    RolePermission,
+    RoutingRule,
+    User,
+    WorkflowStage,
+)
 from infrastructure.database import Base, get_database_manager
 import domain.models  # noqa: F401 — register ORM models with metadata
 
@@ -51,11 +59,41 @@ async def seed() -> None:
         user.set_hashed_password(password_hasher.hash_password("Secret123!"))
         session.add(user)
 
+        patient = Patient(name="Nguyen Van A")
+        patient.identity_number = "001234567890"
+        patient.phone = "0901234567"
+        session.add(patient)
+
+        session.add_all(
+            [
+                RoutingRule(
+                    name="emergency_triage",
+                    description="Route emergency department patients to triage",
+                    source_stage=WorkflowStage.REGISTRATION,
+                    target_stage=WorkflowStage.TRIAGE,
+                    condition_expression='{"department": "emergency"}',
+                    priority=0,
+                    is_active=True,
+                ),
+                RoutingRule(
+                    name="default_examination",
+                    description="Default route to examination",
+                    source_stage=WorkflowStage.REGISTRATION,
+                    target_stage=WorkflowStage.EXAMINATION,
+                    condition_expression="{}",
+                    priority=10,
+                    is_active=True,
+                ),
+            ]
+        )
+
     await manager.dispose()
     print("Seed completed.")
     print("  username: dr_smith")
     print("  password: Secret123!")
     print("  scopes:   read:patient, write:clinical_record")
+    print("  patient:  identity_number=001234567890, name=Nguyen Van A")
+    print("  routing:  emergency -> triage, default -> examination")
 
 
 if __name__ == "__main__":

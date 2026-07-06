@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from api.routers.auth import router as auth_router
+from api.routers.reception import router as reception_router
 from core.config import Settings, get_settings
 from infrastructure.cache.redis_client import get_redis_manager
 from infrastructure.database import get_database_manager
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(auth_router, prefix=settings.api_prefix)
+    application.include_router(reception_router, prefix=settings.api_prefix)
 
     @application.get("/health", tags=["Health"])
     async def health_check() -> dict[str, str]:

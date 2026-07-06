@@ -13,6 +13,7 @@ from core.constants import (
     DatabaseDriver,
     JwtDefaults,
     RedisScheme,
+    RoutingCacheDefaults,
     UrlMask,
 )
 
@@ -130,6 +131,10 @@ class Settings(BaseSettings):
     auth_cache_ttl_seconds: int = Field(
         default=AuthCacheDefaults.TTL_SECONDS,
         alias="AUTH_CACHE_TTL_SECONDS",
+    )
+    routing_rules_cache_ttl_seconds: int = Field(
+        default=RoutingCacheDefaults.TTL_SECONDS,
+        alias="ROUTING_RULES_CACHE_TTL_SECONDS",
     )
 
     @field_validator("environment", mode="before")
