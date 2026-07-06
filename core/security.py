@@ -1,6 +1,5 @@
 """JWT token management and encapsulated password hashing."""
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Any, Final
@@ -9,8 +8,10 @@ import bcrypt
 import jwt
 from jwt.exceptions import InvalidTokenError
 
+from core.async_executor import run_blocking_io
 from core.config import Settings, get_settings
 from core.constants import JwtClaim, TextEncoding
+from domain.entities.token_payload import TokenPayload
 from domain.interfaces import IPasswordHasher, ITokenService
 
 
@@ -19,9 +20,6 @@ class BcryptPasswordHasher(IPasswordHasher):
 
     Uses the ``bcrypt`` adaptive hashing algorithm with an internal cost
     factor. Hashing logic is encapsulated and swappable via ``IPasswordHasher``.
-
-    Attributes:
-        settings: Application settings (reserved for future cost-factor config).
     """
 
     _DEFAULT_ROUNDS: Final[int] = 12
@@ -53,10 +51,18 @@ class BcryptPasswordHasher(IPasswordHasher):
         """
         if not plain_password:
             raise ValueError("Cannot hash an empty password.")
-        password_bytes = plain_password.encode(TextEncoding.UTF8)
-        salt = bcrypt.gensalt(rounds=self._DEFAULT_ROUNDS)
-        hashed = bcrypt.hashpw(password_bytes, salt)
-        return hashed.decode(TextEncoding.UTF8)
+        return self._hash_sync(plain_password)
+
+    async def hash_password_async(self, plain_password: str) -> str:
+        """Hash a password without blocking the async event loop.
+
+        Args:
+            plain_password: Raw password string.
+
+        Returns:
+            Bcrypt hash string.
+        """
+        return await run_blocking_io(lambda: self.hash_password(plain_password))
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a plaintext password against a bcrypt hash.
@@ -70,35 +76,58 @@ class BcryptPasswordHasher(IPasswordHasher):
         """
         if not plain_password or not hashed_password:
             return False
+        return self._verify_sync(plain_password, hashed_password)
+
+    async def verify_password_async(
+        self,
+        plain_password: str,
+        hashed_password: str,
+    ) -> bool:
+        """Verify a password without blocking the async event loop.
+
+        Args:
+            plain_password: Raw password to verify.
+            hashed_password: Stored bcrypt hash.
+
+        Returns:
+            ``True`` if credentials match, otherwise ``False``.
+        """
+        return await run_blocking_io(
+            lambda: self.verify_password(plain_password, hashed_password)
+        )
+
+    def _hash_sync(self, plain_password: str) -> str:
+        """Synchronously hash a password using bcrypt.
+
+        Args:
+            plain_password: Raw password string.
+
+        Returns:
+            Bcrypt hash string.
+        """
+        password_bytes = plain_password.encode(TextEncoding.UTF8)
+        salt = bcrypt.gensalt(rounds=self._DEFAULT_ROUNDS)
+        hashed = bcrypt.hashpw(password_bytes, salt)
+        return hashed.decode(TextEncoding.UTF8)
+
+    def _verify_sync(self, plain_password: str, hashed_password: str) -> bool:
+        """Synchronously verify a password against a bcrypt hash.
+
+        Args:
+            plain_password: Raw password to verify.
+            hashed_password: Stored bcrypt hash.
+
+        Returns:
+            ``True`` if credentials match, otherwise ``False``.
+        """
         return bcrypt.checkpw(
             plain_password.encode(TextEncoding.UTF8),
             hashed_password.encode(TextEncoding.UTF8),
         )
 
 
-@dataclass(frozen=True)
-class TokenPayload:
-    """Immutable decoded JWT access-token payload.
-
-    Attributes:
-        subject: Principal identifier (``sub`` claim).
-        scopes: Fine-grained permission scopes granted to the principal.
-    """
-
-    subject: str
-    scopes: tuple[str, ...]
-
-
 class JwtTokenService(ITokenService):
-    """HS256 JWT token service with fine-grained scope embedding.
-
-    Token payload format::
-
-        {"sub": "user123", "scopes": ["read:patient", "write:clinical_record"]}
-
-    Attributes:
-        settings: Application settings supplying signing parameters.
-    """
+    """HS256 JWT token service with fine-grained scope embedding."""
 
     def __init__(self, settings: Settings) -> None:
         """Bind signing configuration.
@@ -118,7 +147,7 @@ class JwtTokenService(ITokenService):
 
         Args:
             subject: Unique user identifier stored in the ``sub`` claim.
-            scopes: Permission scope strings (e.g., ``write:clinical_record``).
+            scopes: Permission scope strings.
 
         Returns:
             Encoded JWT access token.
@@ -128,19 +157,20 @@ class JwtTokenService(ITokenService):
         """
         if not subject:
             raise ValueError("JWT subject cannot be empty.")
+        return self._encode_token(subject, scopes)
 
-        now = datetime.now(UTC)
-        expire_at = now + timedelta(minutes=self._settings.jwt_expire_minutes)
-        payload: dict[str, Any] = {
-            JwtClaim.SUBJECT: subject,
-            JwtClaim.SCOPES: sorted(set(scopes)),
-            JwtClaim.ISSUED_AT: now,
-            JwtClaim.EXPIRATION: expire_at,
-        }
-        return jwt.encode(
-            payload,
-            self._settings.jwt_secret_key_value,
-            algorithm=self._settings.jwt_algorithm,
+    async def create_access_token_async(self, subject: str, scopes: list[str]) -> str:
+        """Create a JWT without blocking the async event loop.
+
+        Args:
+            subject: Unique user identifier.
+            scopes: Permission scope strings.
+
+        Returns:
+            Encoded JWT access token.
+        """
+        return await run_blocking_io(
+            lambda: self.create_access_token(subject, scopes)
         )
 
     def decode_access_token(self, token: str) -> TokenPayload:
@@ -157,7 +187,55 @@ class JwtTokenService(ITokenService):
         """
         if not token:
             raise ValueError("Token cannot be empty.")
+        return self._decode_token(token)
 
+    async def decode_access_token_async(self, token: str) -> TokenPayload:
+        """Decode a JWT without blocking the async event loop.
+
+        Args:
+            token: Encoded JWT string.
+
+        Returns:
+            Parsed ``TokenPayload``.
+        """
+        return await run_blocking_io(lambda: self.decode_access_token(token))
+
+    def _encode_token(self, subject: str, scopes: list[str]) -> str:
+        """Build and sign a JWT payload.
+
+        Args:
+            subject: Principal identifier.
+            scopes: Permission scopes.
+
+        Returns:
+            Encoded JWT string.
+        """
+        now = datetime.now(UTC)
+        expire_at = now + timedelta(minutes=self._settings.jwt_expire_minutes)
+        payload: dict[str, Any] = {
+            JwtClaim.SUBJECT: subject,
+            JwtClaim.SCOPES: sorted(set(scopes)),
+            JwtClaim.ISSUED_AT: now,
+            JwtClaim.EXPIRATION: expire_at,
+        }
+        return jwt.encode(
+            payload,
+            self._settings.jwt_secret_key_value,
+            algorithm=self._settings.jwt_algorithm,
+        )
+
+    def _decode_token(self, token: str) -> TokenPayload:
+        """Decode and validate a raw JWT string.
+
+        Args:
+            token: Encoded JWT string.
+
+        Returns:
+            Parsed ``TokenPayload``.
+
+        Raises:
+            ValueError: If the token is invalid or malformed.
+        """
         try:
             raw_payload = jwt.decode(
                 token,
@@ -180,20 +258,20 @@ class JwtTokenService(ITokenService):
 
 
 @lru_cache
-def get_password_hasher() -> BcryptPasswordHasher:
-    """Return a cached ``BcryptPasswordHasher`` singleton.
+def get_password_hasher() -> IPasswordHasher:
+    """Return a cached password hasher singleton.
 
     Returns:
-        Shared password hasher instance.
+        ``IPasswordHasher`` implementation.
     """
     return BcryptPasswordHasher(get_settings())
 
 
 @lru_cache
-def get_jwt_token_service() -> JwtTokenService:
-    """Return a cached ``JwtTokenService`` singleton.
+def get_jwt_token_service() -> ITokenService:
+    """Return a cached JWT token service singleton.
 
     Returns:
-        Shared JWT token service instance.
+        ``ITokenService`` implementation.
     """
     return JwtTokenService(get_settings())

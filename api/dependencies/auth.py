@@ -12,16 +12,13 @@ from fastapi.security import (
 )
 
 from application.services.auth_service import AuthService
+from core.async_executor import run_blocking_io
 from core.config import get_settings
 from core.constants import AuthErrorDetail
-from core.security import (
-    BcryptPasswordHasher,
-    JwtTokenService,
-    TokenPayload,
-    get_jwt_token_service,
-    get_password_hasher,
-)
-from infrastructure.cache.redis_client import RedisManager, get_redis_manager
+from core.security import get_jwt_token_service, get_password_hasher
+from domain.entities.token_payload import TokenPayload
+from domain.interfaces import ITokenService
+from infrastructure.cache.redis_client import get_redis_manager
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -37,21 +34,12 @@ def get_auth_service() -> AuthService:
         settings=get_settings(),
         password_hasher=get_password_hasher(),
         token_service=get_jwt_token_service(),
-        redis_manager=get_redis_manager(),
+        cache_client=get_redis_manager(),
     )
 
 
 class PermissionChecker:
-    """Reusable RBAC dependency verifying JWT scopes against required permissions.
-
-    Supports two invocation styles:
-
-    * ``Depends(PermissionChecker(["write:clinical_record"]))``
-    * ``Security(PermissionChecker(), scopes=["write:clinical_record"])``
-
-    When a required permission is absent from the JWT ``scopes`` claim, raises
-    HTTP 403 with detail ``"Not enough permissions"``.
-    """
+    """Reusable RBAC dependency verifying JWT scopes against required permissions."""
 
     def __init__(self, required_permissions: Sequence[str] | None = None) -> None:
         """Initialize the checker with optional static permission requirements.
@@ -68,14 +56,14 @@ class PermissionChecker:
             HTTPAuthorizationCredentials | None,
             Depends(_bearer_scheme),
         ],
-        token_service: Annotated[JwtTokenService, Depends(get_jwt_token_service)],
+        token_service: Annotated[ITokenService, Depends(get_jwt_token_service)],
     ) -> TokenPayload:
         """Validate the bearer token and enforce fine-grained scope requirements.
 
         Args:
             security_scopes: Scopes declared via ``Security(..., scopes=[...])``.
             credentials: Bearer token extracted from the Authorization header.
-            token_service: JWT decoding service.
+            token_service: JWT decoding service interface.
 
         Returns:
             Decoded ``TokenPayload`` when all required scopes are granted.
@@ -84,25 +72,62 @@ class PermissionChecker:
             HTTPException: 401 when the token is missing or invalid.
             HTTPException: 403 when required scopes are not granted.
         """
+        raw_token = self._extract_raw_token(credentials)
+        payload = await self._decode_token_payload(token_service, raw_token)
+        required_permissions = self._resolve_required_permissions(security_scopes)
+        self._enforce_permissions(payload, required_permissions, security_scopes)
+        return payload
+
+    def _extract_raw_token(
+        self,
+        credentials: HTTPAuthorizationCredentials | None,
+    ) -> str:
+        """Extract the bearer token string from credentials.
+
+        Args:
+            credentials: Parsed Authorization header credentials.
+
+        Returns:
+            Raw JWT string.
+
+        Raises:
+            HTTPException: 401 when credentials are missing.
+        """
         if credentials is None or not credentials.credentials:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=AuthErrorDetail.MISSING_TOKEN,
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        return credentials.credentials
 
+    async def _decode_token_payload(
+        self,
+        token_service: ITokenService,
+        raw_token: str,
+    ) -> TokenPayload:
+        """Decode a JWT using a non-blocking executor wrapper.
+
+        Args:
+            token_service: JWT service interface.
+            raw_token: Encoded JWT string.
+
+        Returns:
+            Decoded ``TokenPayload``.
+
+        Raises:
+            HTTPException: 401 when decoding fails.
+        """
         try:
-            payload = token_service.decode_access_token(credentials.credentials)
+            return await run_blocking_io(
+                lambda: token_service.decode_access_token(raw_token)
+            )
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=AuthErrorDetail.INVALID_TOKEN,
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
-
-        required_permissions = self._resolve_required_permissions(security_scopes)
-        self._enforce_permissions(payload, required_permissions, security_scopes)
-        return payload
 
     def _resolve_required_permissions(
         self,
@@ -174,7 +199,6 @@ def require_permissions(
     return PermissionChecker(list(permissions))
 
 
-# Type aliases for ergonomic endpoint annotations.
 AuthenticatedUser = Annotated[TokenPayload, Depends(PermissionChecker())]
 ScopedUser = Annotated[TokenPayload, Security(PermissionChecker())]
 

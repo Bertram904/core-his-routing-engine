@@ -6,11 +6,12 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from api.exception_handlers import register_exception_handlers
 from api.routers.auth import router as auth_router
 from api.routers.clinical import router as clinical_router
 from api.routers.reception import router as reception_router
 from core.config import Settings, get_settings
-from infrastructure.cache.redis_client import get_redis_manager
+from infrastructure.cache.redis_client import RedisManager, get_redis_manager
 from infrastructure.database import get_database_manager
 
 
@@ -25,11 +26,13 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     redis_manager = get_redis_manager()
 
     database_manager.connect()
-    await redis_manager.connect()
+    if isinstance(redis_manager, RedisManager):
+        await redis_manager.connect()
 
     yield
 
-    await redis_manager.dispose()
+    if isinstance(redis_manager, RedisManager):
+        await redis_manager.dispose()
     await database_manager.dispose()
 
 
@@ -50,6 +53,8 @@ def create_app() -> FastAPI:
     application.include_router(auth_router, prefix=settings.api_prefix)
     application.include_router(reception_router, prefix=settings.api_prefix)
     application.include_router(clinical_router, prefix=settings.api_prefix)
+
+    register_exception_handlers(application)
 
     @application.get("/health", tags=["Health"])
     async def health_check() -> dict[str, str]:

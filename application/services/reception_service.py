@@ -7,35 +7,23 @@ from application.dtos.reception_dto import (
     PatientAutoPopulateResult,
     ReceptionIntakeRequest,
     ReceptionIntakeResult,
+    RoutingContextDto,
 )
 from application.services.base_service import BaseService, IReceptionService
-from application.services.routing_service import DynamicRoutingEngine
+from application.services.interfaces import IRoutingEngine
 from domain.models import Patient
 
 
 class ReceptionService(BaseService, IReceptionService):
-    """Handles reception auto-populate and intake orchestration.
+    """Handles reception auto-populate and intake orchestration."""
 
-    Searches patients by ``identity_number`` to auto-populate demographic
-    fields, then delegates dynamic routing to the injected
-    ``DynamicRoutingEngine``. Contains no HTTP or framework dependencies.
-
-    Attributes:
-        routing_engine: Dynamic routing engine for workflow decisions.
-    """
-
-    def __init__(self, routing_engine: DynamicRoutingEngine) -> None:
+    def __init__(self, routing_engine: IRoutingEngine) -> None:
         """Wire reception service dependencies.
 
         Args:
             routing_engine: Routing engine resolving target workflow stages.
         """
-        self._routing_engine: DynamicRoutingEngine = routing_engine
-
-    @property
-    def routing_engine(self) -> DynamicRoutingEngine:
-        """Return the bound dynamic routing engine."""
-        return self._routing_engine
+        self._routing_engine: IRoutingEngine = routing_engine
 
     async def auto_populate_by_identity_number(
         self,
@@ -43,9 +31,6 @@ class ReceptionService(BaseService, IReceptionService):
         identity_number: str,
     ) -> PatientAutoPopulateResult:
         """Search for a patient by identity number and return demographics.
-
-        Because ``identity_number`` is encrypted at rest with Fernet, lookup
-        decrypts candidates in the application layer after retrieval.
 
         Args:
             session: Active async database session.
@@ -60,18 +45,8 @@ class ReceptionService(BaseService, IReceptionService):
             normalized_identity,
         )
         if patient is None:
-            return PatientAutoPopulateResult(
-                found=False,
-                identity_number=normalized_identity,
-            )
-
-        return PatientAutoPopulateResult(
-            found=True,
-            patient_id=patient.id,
-            name=patient.name,
-            phone=patient.phone,
-            identity_number=normalized_identity,
-        )
+            return self._build_not_found_result(normalized_identity)
+        return self._build_found_result(patient, normalized_identity)
 
     async def process_intake(
         self,
@@ -91,19 +66,66 @@ class ReceptionService(BaseService, IReceptionService):
             session=session,
             identity_number=request.identity_number,
         )
-
-        routing_context = request.routing_context
-        if auto_populate.patient_id is not None:
-            routing_context.patient_id = auto_populate.patient_id
-
+        routing_context = self._enrich_routing_context(
+            request.routing_context,
+            auto_populate.patient_id,
+        )
         routing = await self._routing_engine.resolve_route(
             session=session,
             routing_context=routing_context,
         )
-        return ReceptionIntakeResult(
-            auto_populate=auto_populate,
-            routing=routing,
+        return ReceptionIntakeResult(auto_populate=auto_populate, routing=routing)
+
+    def _build_not_found_result(self, identity_number: str) -> PatientAutoPopulateResult:
+        """Build a not-found auto-populate result.
+
+        Args:
+            identity_number: Queried identity number.
+
+        Returns:
+            Result indicating no matching patient.
+        """
+        return PatientAutoPopulateResult(found=False, identity_number=identity_number)
+
+    def _build_found_result(
+        self,
+        patient: Patient,
+        identity_number: str,
+    ) -> PatientAutoPopulateResult:
+        """Build a found auto-populate result from a patient entity.
+
+        Args:
+            patient: Matching patient ORM instance.
+            identity_number: Queried identity number.
+
+        Returns:
+            Result with populated demographic fields.
+        """
+        return PatientAutoPopulateResult(
+            found=True,
+            patient_id=patient.id,
+            name=patient.name,
+            phone=patient.phone,
+            identity_number=identity_number,
         )
+
+    def _enrich_routing_context(
+        self,
+        routing_context: RoutingContextDto,
+        patient_id: int | None,
+    ) -> RoutingContextDto:
+        """Attach a resolved patient ID to the routing context when available.
+
+        Args:
+            routing_context: Incoming routing context DTO.
+            patient_id: Resolved patient identifier.
+
+        Returns:
+            Routing context with optional patient ID enrichment.
+        """
+        if patient_id is not None:
+            routing_context.patient_id = patient_id
+        return routing_context
 
     async def _find_patient_by_identity_number(
         self,
