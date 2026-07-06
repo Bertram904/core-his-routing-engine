@@ -3,8 +3,22 @@
 # Base: python:3.11-slim | Principle of least privilege (non-root runtime)
 # =============================================================================
 
+# =============================================================================
+# Stage 1a — Frontend: build enterprise React SPA
+# =============================================================================
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+COPY frontend/package.json ./
+RUN npm install
+
+COPY frontend/ ./
+RUN npm run build
+
+
 # -----------------------------------------------------------------------------
-# Stage 1 — Builder: compile wheels with build-time dependencies only
+# Stage 1b — Builder: compile wheels with build-time dependencies only
 # -----------------------------------------------------------------------------
 FROM python:3.11-slim AS builder
 
@@ -71,6 +85,7 @@ RUN pip install --no-cache-dir /wheels/* \
 
 # Application source — owned by non-root user
 COPY --chown=${APP_USER}:${APP_USER} . .
+COPY --from=frontend-builder --chown=${APP_USER}:${APP_USER} /frontend/dist ./frontend/dist
 
 USER ${APP_USER}
 

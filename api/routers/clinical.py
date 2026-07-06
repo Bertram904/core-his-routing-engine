@@ -13,6 +13,7 @@ from application.dtos.clinical_dto import (
     ClinicalRecordResponse,
     DynamicClinicalRecordRequest,
 )
+from application.dtos.workflow_dto import WorkflowListItem
 from application.services.clinical_service import ClinicalService
 from core.constants import PdfDefaults
 from domain.entities.token_payload import TokenPayload
@@ -20,6 +21,28 @@ from domain.interfaces import IPdfGenerator
 from infrastructure.database import get_db_session
 
 router = APIRouter(tags=["Clinical"])
+
+
+@router.get("/workflows", response_model=list[WorkflowListItem])
+async def list_workflows(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    clinical_service: Annotated[ClinicalService, Depends(get_clinical_service)],
+    _: Annotated[
+        TokenPayload,
+        Security(PermissionChecker(), scopes=["read:patient"]),
+    ],
+) -> list[WorkflowListItem]:
+    """List patient workflows for reception and clinical workspace screens.
+
+    Args:
+        session: Request-scoped async database session.
+        clinical_service: Clinical application service.
+        _: Enforces ``read:patient`` scope via JWT.
+
+    Returns:
+        Workflow summaries for UI selection lists.
+    """
+    return await clinical_service.list_workflows(session=session)
 
 
 @router.post(

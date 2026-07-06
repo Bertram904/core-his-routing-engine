@@ -36,3 +36,7 @@ Dockerfile*
 
 # JMeter artifacts
 jmeter/results/
+
+# Frontend dependencies (rebuilt in Docker stage)
+frontend/node_modules/
+frontend/dist/

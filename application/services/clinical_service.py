@@ -13,6 +13,7 @@ from application.dtos.clinical_dto import (
     DynamicClinicalRecordRequest,
     WorkflowPdfContext,
 )
+from application.dtos.workflow_dto import WorkflowListItem
 from application.services.base_service import BaseService
 from core.constants import ClinicalErrorDetail
 from domain.exceptions.domain_exceptions import EntityNotFoundError
@@ -26,6 +27,37 @@ from domain.models import (
 
 class ClinicalService(BaseService):
     """Orchestrates clinical record persistence and PDF export context building."""
+
+    async def list_workflows(
+        self,
+        session: AsyncSession,
+    ) -> list[WorkflowListItem]:
+        """List active patient workflows for UI workflow pickers.
+
+        Args:
+            session: Active async database session.
+
+        Returns:
+            Workflow summaries ordered by newest first.
+        """
+        statement = (
+            select(PatientWorkflow)
+            .options(selectinload(PatientWorkflow.patient))
+            .order_by(PatientWorkflow.id.desc())
+        )
+        result = await session.execute(statement)
+        workflows = result.scalars().all()
+        return [
+            WorkflowListItem(
+                id=workflow.id,
+                patient_id=workflow.patient_id,
+                patient_name=workflow.patient.name,
+                current_stage=workflow.current_stage,
+                status=workflow.status,
+                assigned_department=workflow.assigned_department,
+            )
+            for workflow in workflows
+        ]
 
     async def create_workflow_record(
         self,

@@ -38,28 +38,53 @@ async def seed() -> None:
             await manager.dispose()
             return
 
-        permissions = [
-            Permission(name="read:patient", description="Read patient records"),
-            Permission(
-                name="write:clinical_record",
-                description="Write clinical records",
-            ),
-        ]
+        existing_user = await session.scalar(
+            select(User).where(User.username == "dr_smith")
+        )
+        if existing_user is not None:
+            print("Seed data already exists. Skipping.")
+            await manager.dispose()
+            return
+
+        read_patient = Permission(
+            name="read:patient",
+            description="Read patient records",
+        )
+        write_clinical = Permission(
+            name="write:clinical_record",
+            description="Write clinical records",
+        )
+        permissions = [read_patient, write_clinical]
         session.add_all(permissions)
         await session.flush()
 
-        role = Role(name="physician")
-        session.add(role)
+        physician_role = Role(name="physician")
+        reception_role = Role(name="reception_clerk")
+        session.add_all([physician_role, reception_role])
         await session.flush()
 
         for permission in permissions:
             session.add(
-                RolePermission(role_id=role.id, permission_id=permission.id)
+                RolePermission(
+                    role_id=physician_role.id,
+                    permission_id=permission.id,
+                )
             )
 
-        user = User(username="dr_smith", role_id=role.id)
-        user.set_hashed_password(password_hasher.hash_password("Secret123!"))
-        session.add(user)
+        session.add(
+            RolePermission(
+                role_id=reception_role.id,
+                permission_id=read_patient.id,
+            )
+        )
+
+        physician = User(username="dr_smith", role_id=physician_role.id)
+        physician.set_hashed_password(password_hasher.hash_password("Secret123!"))
+        reception_clerk = User(username="recep_clerk", role_id=reception_role.id)
+        reception_clerk.set_hashed_password(
+            password_hasher.hash_password("Secret123!")
+        )
+        session.add_all([physician, reception_clerk])
 
         patient = Patient(name="Nguyen Van A")
         patient.identity_number = "001234567890"
@@ -101,9 +126,11 @@ async def seed() -> None:
 
     await manager.dispose()
     print("Seed completed.")
-    print("  username: dr_smith")
-    print("  password: Secret123!")
-    print("  scopes:   read:patient, write:clinical_record")
+    print("  physician:  dr_smith / Secret123!")
+    print("  reception:  recep_clerk / Secret123!")
+    print("  scopes:")
+    print("    dr_smith    -> read:patient, write:clinical_record")
+    print("    recep_clerk -> read:patient")
     print("  patient:  identity_number=001234567890, name=Nguyen Van A")
     print("  routing:  emergency -> triage, default -> examination")
 
