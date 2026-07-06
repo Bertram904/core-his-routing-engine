@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Final
 
 from sqlalchemy import (
     DateTime,
@@ -16,20 +15,15 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from domain.constants import (
+    ColumnLength,
+    ForeignKeyAction,
+    RoutingRuleDefaults,
+    TableName,
+    foreign_key_reference,
+)
 from infrastructure.database import Base
 from infrastructure.security.encryption import EncryptedString
-
-_USERNAME_MAX_LENGTH: Final[int] = 150
-_PASSWORD_HASH_MAX_LENGTH: Final[int] = 255
-_ENTITY_NAME_MAX_LENGTH: Final[int] = 255
-_PERMISSION_NAME_MAX_LENGTH: Final[int] = 100
-_ROLE_NAME_MAX_LENGTH: Final[int] = 100
-_DESCRIPTION_MAX_LENGTH: Final[int] = 500
-_RECORD_TYPE_MAX_LENGTH: Final[int] = 100
-_TITLE_MAX_LENGTH: Final[int] = 255
-_DEPARTMENT_MAX_LENGTH: Final[int] = 100
-_CONDITION_EXPRESSION_MAX_LENGTH: Final[int] = 1000
-
 
 def _enum_values(enum_class: type[Enum]) -> list[str]:
     """Extract string values from a string-backed enum class.
@@ -80,21 +74,21 @@ class Permission(Base):
         description: Human-readable explanation of the permission scope.
     """
 
-    __tablename__ = "permissions"
+    __tablename__ = TableName.PERMISSIONS
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(
-        String(_PERMISSION_NAME_MAX_LENGTH),
+        String(ColumnLength.PERMISSION_NAME),
         unique=True,
         index=True,
     )
     description: Mapped[str | None] = mapped_column(
-        String(_DESCRIPTION_MAX_LENGTH),
+        String(ColumnLength.DESCRIPTION),
         nullable=True,
     )
 
     roles: Mapped[list[Role]] = relationship(
-        secondary="role_permissions",
+        secondary=TableName.ROLE_PERMISSIONS,
         back_populates="permissions",
     )
 
@@ -110,17 +104,17 @@ class Role(Base):
         name: Unique role identifier (e.g., ``physician``, ``nurse``).
     """
 
-    __tablename__ = "roles"
+    __tablename__ = TableName.ROLES
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(
-        String(_ROLE_NAME_MAX_LENGTH),
+        String(ColumnLength.ROLE_NAME),
         unique=True,
         index=True,
     )
 
     permissions: Mapped[list[Permission]] = relationship(
-        secondary="role_permissions",
+        secondary=TableName.ROLE_PERMISSIONS,
         back_populates="roles",
     )
     users: Mapped[list[User]] = relationship(back_populates="role")
@@ -142,14 +136,20 @@ class RolePermission(Base):
         granted_at: Timestamp when the permission was associated.
     """
 
-    __tablename__ = "role_permissions"
+    __tablename__ = TableName.ROLE_PERMISSIONS
 
     role_id: Mapped[int] = mapped_column(
-        ForeignKey("roles.id", ondelete="CASCADE"),
+        ForeignKey(
+            foreign_key_reference(TableName.ROLES),
+            ondelete=ForeignKeyAction.CASCADE,
+        ),
         primary_key=True,
     )
     permission_id: Mapped[int] = mapped_column(
-        ForeignKey("permissions.id", ondelete="CASCADE"),
+        ForeignKey(
+            foreign_key_reference(TableName.PERMISSIONS),
+            ondelete=ForeignKeyAction.CASCADE,
+        ),
         primary_key=True,
     )
     granted_at: Mapped[datetime] = mapped_column(
@@ -179,20 +179,23 @@ class User(Base):
         role_id: Foreign key to the assigned role.
     """
 
-    __tablename__ = "users"
+    __tablename__ = TableName.USERS
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(
-        String(_USERNAME_MAX_LENGTH),
+        String(ColumnLength.USERNAME),
         unique=True,
         index=True,
     )
     _hashed_password: Mapped[str] = mapped_column(
         "hashed_password",
-        String(_PASSWORD_HASH_MAX_LENGTH),
+        String(ColumnLength.PASSWORD_HASH),
     )
     role_id: Mapped[int] = mapped_column(
-        ForeignKey("roles.id", ondelete="RESTRICT"),
+        ForeignKey(
+            foreign_key_reference(TableName.ROLES),
+            ondelete=ForeignKeyAction.RESTRICT,
+        ),
         index=True,
     )
 
@@ -234,10 +237,10 @@ class Patient(Base):
         name: Patient full name (non-sensitive).
     """
 
-    __tablename__ = "patients"
+    __tablename__ = TableName.PATIENTS
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(_ENTITY_NAME_MAX_LENGTH), index=True)
+    name: Mapped[str] = mapped_column(String(ColumnLength.ENTITY_NAME), index=True)
     _identity_number: Mapped[str | None] = mapped_column(
         "identity_number",
         EncryptedString(),
@@ -305,16 +308,16 @@ class RoutingRule(Base):
         is_active: Whether the rule participates in routing decisions.
     """
 
-    __tablename__ = "routing_rules"
+    __tablename__ = TableName.ROUTING_RULES
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(
-        String(_ENTITY_NAME_MAX_LENGTH),
+        String(ColumnLength.ENTITY_NAME),
         unique=True,
         index=True,
     )
     description: Mapped[str | None] = mapped_column(
-        String(_DESCRIPTION_MAX_LENGTH),
+        String(ColumnLength.DESCRIPTION),
         nullable=True,
     )
     source_stage: Mapped[WorkflowStage] = mapped_column(
@@ -322,7 +325,7 @@ class RoutingRule(Base):
             WorkflowStage,
             values_callable=_enum_values,
             native_enum=False,
-            length=_ENTITY_NAME_MAX_LENGTH,
+            length=ColumnLength.ENTITY_NAME,
         ),
         index=True,
     )
@@ -331,15 +334,21 @@ class RoutingRule(Base):
             WorkflowStage,
             values_callable=_enum_values,
             native_enum=False,
-            length=_ENTITY_NAME_MAX_LENGTH,
+            length=ColumnLength.ENTITY_NAME,
         ),
         index=True,
     )
     condition_expression: Mapped[str] = mapped_column(
-        String(_CONDITION_EXPRESSION_MAX_LENGTH),
+        String(ColumnLength.CONDITION_EXPRESSION),
     )
-    priority: Mapped[int] = mapped_column(default=0, index=True)
-    is_active: Mapped[bool] = mapped_column(default=True, index=True)
+    priority: Mapped[int] = mapped_column(
+        default=RoutingRuleDefaults.PRIORITY,
+        index=True,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        default=RoutingRuleDefaults.IS_ACTIVE,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -376,15 +385,21 @@ class PatientWorkflow(Base):
         completed_at: Workflow completion timestamp (``None`` if ongoing).
     """
 
-    __tablename__ = "patient_workflows"
+    __tablename__ = TableName.PATIENT_WORKFLOWS
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     patient_id: Mapped[int] = mapped_column(
-        ForeignKey("patients.id", ondelete="CASCADE"),
+        ForeignKey(
+            foreign_key_reference(TableName.PATIENTS),
+            ondelete=ForeignKeyAction.CASCADE,
+        ),
         index=True,
     )
     routing_rule_id: Mapped[int | None] = mapped_column(
-        ForeignKey("routing_rules.id", ondelete="SET NULL"),
+        ForeignKey(
+            foreign_key_reference(TableName.ROUTING_RULES),
+            ondelete=ForeignKeyAction.SET_NULL,
+        ),
         nullable=True,
         index=True,
     )
@@ -393,7 +408,7 @@ class PatientWorkflow(Base):
             WorkflowStage,
             values_callable=_enum_values,
             native_enum=False,
-            length=_ENTITY_NAME_MAX_LENGTH,
+            length=ColumnLength.ENTITY_NAME,
         ),
         index=True,
     )
@@ -402,13 +417,13 @@ class PatientWorkflow(Base):
             WorkflowStatus,
             values_callable=_enum_values,
             native_enum=False,
-            length=_ENTITY_NAME_MAX_LENGTH,
+            length=ColumnLength.ENTITY_NAME,
         ),
         default=WorkflowStatus.PENDING,
         index=True,
     )
     assigned_department: Mapped[str | None] = mapped_column(
-        String(_DEPARTMENT_MAX_LENGTH),
+        String(ColumnLength.DEPARTMENT),
         nullable=True,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -448,29 +463,35 @@ class ClinicalRecord(Base):
         updated_at: Last modification timestamp.
     """
 
-    __tablename__ = "clinical_records"
+    __tablename__ = TableName.CLINICAL_RECORDS
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     patient_id: Mapped[int] = mapped_column(
-        ForeignKey("patients.id", ondelete="CASCADE"),
+        ForeignKey(
+            foreign_key_reference(TableName.PATIENTS),
+            ondelete=ForeignKeyAction.CASCADE,
+        ),
         index=True,
     )
     author_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
+        ForeignKey(
+            foreign_key_reference(TableName.USERS),
+            ondelete=ForeignKeyAction.RESTRICT,
+        ),
         index=True,
     )
     record_type: Mapped[str] = mapped_column(
-        String(_RECORD_TYPE_MAX_LENGTH),
+        String(ColumnLength.RECORD_TYPE),
         index=True,
     )
-    title: Mapped[str] = mapped_column(String(_TITLE_MAX_LENGTH))
+    title: Mapped[str] = mapped_column(String(ColumnLength.TITLE))
     content: Mapped[str] = mapped_column(Text)
     status: Mapped[ClinicalRecordStatus] = mapped_column(
         SAEnum(
             ClinicalRecordStatus,
             values_callable=_enum_values,
             native_enum=False,
-            length=_ENTITY_NAME_MAX_LENGTH,
+            length=ColumnLength.ENTITY_NAME,
         ),
         default=ClinicalRecordStatus.DRAFT,
         index=True,

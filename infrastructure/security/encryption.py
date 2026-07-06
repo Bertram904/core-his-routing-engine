@@ -7,6 +7,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.types import Text, TypeDecorator
 
 from core.config import Settings, get_settings
+from core.constants import TextEncoding
 from domain.interfaces import IEncryptionStrategy
 
 
@@ -45,7 +46,7 @@ class FernetEncryptionStrategy(IEncryptionStrategy):
         Raises:
             ValueError: If the key format is invalid.
         """
-        key = self._settings.encryption_key_value.encode("utf-8")
+        key = self._settings.encryption_key_value.encode(TextEncoding.UTF8)
         try:
             return Fernet(key)
         except (ValueError, TypeError) as exc:
@@ -68,8 +69,8 @@ class FernetEncryptionStrategy(IEncryptionStrategy):
         """
         if not plaintext:
             raise ValueError("Cannot encrypt empty plaintext.")
-        token = self._fernet.encrypt(plaintext.encode("utf-8"))
-        return token.decode("utf-8")
+        token = self._fernet.encrypt(plaintext.encode(TextEncoding.UTF8))
+        return token.decode(TextEncoding.UTF8)
 
     def decrypt(self, ciphertext: str) -> str:
         """Decrypt a Fernet ciphertext token.
@@ -86,10 +87,12 @@ class FernetEncryptionStrategy(IEncryptionStrategy):
         if not ciphertext:
             raise ValueError("Cannot decrypt empty ciphertext.")
         try:
-            plaintext_bytes = self._fernet.decrypt(ciphertext.encode("utf-8"))
+            plaintext_bytes = self._fernet.decrypt(
+                ciphertext.encode(TextEncoding.UTF8)
+            )
         except InvalidToken as exc:
             raise ValueError("Ciphertext is invalid or has been tampered.") from exc
-        return plaintext_bytes.decode("utf-8")
+        return plaintext_bytes.decode(TextEncoding.UTF8)
 
 
 class EncryptionService:

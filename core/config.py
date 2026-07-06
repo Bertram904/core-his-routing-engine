@@ -7,6 +7,8 @@ from typing import Final
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.constants import ConfigFile, DatabaseDriver, RedisScheme, UrlMask
+
 
 class Environment(str, Enum):
     """Supported deployment environments."""
@@ -45,8 +47,8 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
+        env_file=ConfigFile.ENV_FILE,
+        env_file_encoding=ConfigFile.ENV_ENCODING,
         case_sensitive=False,
         extra="ignore",
     )
@@ -152,7 +154,7 @@ class Settings(BaseSettings):
         """
         password = self.postgres_password.get_secret_value()
         return (
-            f"postgresql+asyncpg://{self.postgres_user}:{password}"
+            f"{DatabaseDriver.ASYNC_POSTGRES}://{self.postgres_user}:{password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
@@ -166,10 +168,13 @@ class Settings(BaseSettings):
         if self.redis_password is not None:
             password = self.redis_password.get_secret_value()
             return (
-                f"redis://:{password}@{self.redis_host}:"
+                f"{RedisScheme.DEFAULT}://:{password}@{self.redis_host}:"
                 f"{self.redis_port}/{self.redis_db}"
             )
-        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return (
+            f"{RedisScheme.DEFAULT}://{self.redis_host}:"
+            f"{self.redis_port}/{self.redis_db}"
+        )
 
     @property
     def encryption_key_value(self) -> str:
@@ -187,8 +192,9 @@ class Settings(BaseSettings):
             Database DSN suitable for logging and diagnostics.
         """
         return (
-            f"postgresql+asyncpg://{self.postgres_user}:***"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"{DatabaseDriver.ASYNC_POSTGRES}://{self.postgres_user}:"
+            f"{UrlMask.CREDENTIAL}@{self.postgres_host}:"
+            f"{self.postgres_port}/{self.postgres_db}"
         )
 
 

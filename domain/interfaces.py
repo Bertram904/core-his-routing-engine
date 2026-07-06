@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
+from domain.constants import PaginationDefaults
+
 EntityT = TypeVar("EntityT")
 IdentifierT = TypeVar("IdentifierT")
 
@@ -33,8 +35,8 @@ class IRepository(ABC, Generic[EntityT, IdentifierT]):
     async def get_all(
         self,
         *,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int = PaginationDefaults.SKIP,
+        limit: int = PaginationDefaults.LIMIT,
     ) -> list[EntityT]:
         """Retrieve a paginated collection of entities.
 
