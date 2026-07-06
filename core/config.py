@@ -7,7 +7,14 @@ from typing import Final
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from core.constants import ConfigFile, DatabaseDriver, RedisScheme, UrlMask
+from core.constants import (
+    AuthCacheDefaults,
+    ConfigFile,
+    DatabaseDriver,
+    JwtDefaults,
+    RedisScheme,
+    UrlMask,
+)
 
 
 class Environment(str, Enum):
@@ -108,6 +115,23 @@ class Settings(BaseSettings):
         alias="ENCRYPTION_KEY",
     )
 
+    jwt_secret_key: SecretStr = Field(
+        default=SecretStr("change-me-in-production-jwt-secret-key"),
+        alias="JWT_SECRET_KEY",
+    )
+    jwt_algorithm: str = Field(
+        default=JwtDefaults.ALGORITHM,
+        alias="JWT_ALGORITHM",
+    )
+    jwt_expire_minutes: int = Field(
+        default=JwtDefaults.EXPIRE_MINUTES,
+        alias="JWT_EXPIRE_MINUTES",
+    )
+    auth_cache_ttl_seconds: int = Field(
+        default=AuthCacheDefaults.TTL_SECONDS,
+        alias="AUTH_CACHE_TTL_SECONDS",
+    )
+
     @field_validator("environment", mode="before")
     @classmethod
     def _normalize_environment(cls, value: str | Environment) -> Environment:
@@ -184,6 +208,15 @@ class Settings(BaseSettings):
             Decoded encryption key string.
         """
         return self.encryption_key.get_secret_value()
+
+    @property
+    def jwt_secret_key_value(self) -> str:
+        """Return the raw JWT signing secret.
+
+        Returns:
+            Decoded JWT secret string.
+        """
+        return self.jwt_secret_key.get_secret_value()
 
     def masked_database_url(self) -> str:
         """Return a log-safe database URL with credentials redacted.
