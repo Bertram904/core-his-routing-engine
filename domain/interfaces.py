@@ -176,6 +176,27 @@ class ITokenService(ABC):
         """
 
 
+class AbstractRuleEvaluator(ABC):
+    """Contract for evaluating dynamic routing rule condition expressions.
+
+    Concrete evaluators implement domain-specific matching logic. The
+    ``DynamicRoutingEngine`` depends on this abstraction (polymorphism),
+    not on any single parsing or matching strategy.
+    """
+
+    @abstractmethod
+    def evaluate(self, condition_expression: str, context: dict[str, Any]) -> bool:
+        """Determine whether a rule condition matches the supplied context.
+
+        Args:
+            condition_expression: Serialized rule condition (e.g., JSON DSL).
+            context: Runtime facts used for rule matching.
+
+        Returns:
+            ``True`` when the rule condition is satisfied.
+        """
+
+
 class IPdfGenerator(ABC):
     """Contract for generating PDF documents from structured data."""
 

@@ -69,3 +69,10 @@ class RedisKeyPrefix:
     """Redis key namespaces for infrastructure adapters."""
 
     USER_PERMISSIONS: Final[str] = "user_permissions"
+    ROUTING_RULES: Final[str] = "routing_rules"
+
+
+class RoutingCacheDefaults:
+    """Default TTL for cached routing rule sets."""
+
+    TTL_SECONDS: Final[int] = 1800
