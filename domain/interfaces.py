@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
 from domain.constants import PaginationDefaults
+from domain.entities.token_payload import TokenPayload
 
 EntityT = TypeVar("EntityT")
 IdentifierT = TypeVar("IdentifierT")
@@ -93,6 +94,31 @@ class IRepository(ABC, Generic[EntityT, IdentifierT]):
         """
 
 
+class IAsyncCacheClient(ABC):
+    """Contract for asynchronous key-value cache adapters."""
+
+    @abstractmethod
+    async def get(self, key: str) -> str | None:
+        """Retrieve a cached string value.
+
+        Args:
+            key: Cache key.
+
+        Returns:
+            Cached value or ``None`` when absent.
+        """
+
+    @abstractmethod
+    async def set(self, key: str, value: str, *, ttl_seconds: int) -> None:
+        """Store a string value with a TTL.
+
+        Args:
+            key: Cache key.
+            value: String payload.
+            ttl_seconds: Expiration in seconds.
+        """
+
+
 class IEncryptionStrategy(ABC):
     """Contract for symmetric application-level field encryption."""
 
@@ -162,14 +188,14 @@ class ITokenService(ABC):
         """
 
     @abstractmethod
-    def decode_access_token(self, token: str) -> Any:
+    def decode_access_token(self, token: str) -> TokenPayload:
         """Decode and validate a JWT access token.
 
         Args:
             token: Encoded JWT string from the Authorization header.
 
         Returns:
-            Parsed token payload object.
+            Parsed ``TokenPayload`` object.
 
         Raises:
             ValueError: If the token is invalid or expired.

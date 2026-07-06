@@ -13,7 +13,7 @@ from application.dtos.reception_dto import (
     ReceptionIntakeResult,
 )
 from application.services.reception_service import ReceptionService
-from core.security import TokenPayload
+from domain.entities.token_payload import TokenPayload
 from infrastructure.database import get_db_session
 
 router = APIRouter(prefix="/reception", tags=["Reception"])

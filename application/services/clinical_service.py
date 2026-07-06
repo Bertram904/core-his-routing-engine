@@ -3,10 +3,9 @@
 import json
 from typing import Any
 
-from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import selectinload
 
 from application.dtos.clinical_dto import (
     ClinicalRecordExportItem,
@@ -16,6 +15,7 @@ from application.dtos.clinical_dto import (
 )
 from application.services.base_service import BaseService
 from core.constants import ClinicalErrorDetail
+from domain.exceptions.domain_exceptions import EntityNotFoundError
 from domain.models import (
     ClinicalRecord,
     ClinicalRecordStatus,
@@ -25,13 +25,7 @@ from domain.models import (
 
 
 class ClinicalService(BaseService):
-    """Orchestrates clinical record persistence and PDF export context building.
-
-    Contains pure application logic with no HTTP framework dependencies.
-
-    Attributes:
-        None — stateless service resolved per request via dependency injection.
-    """
+    """Orchestrates clinical record persistence and PDF export context building."""
 
     async def create_workflow_record(
         self,
@@ -52,46 +46,21 @@ class ClinicalService(BaseService):
             Persisted record response DTO.
 
         Raises:
-            HTTPException: 404 when workflow or author is not found.
+            EntityNotFoundError: When workflow or author is not found.
         """
         workflow = await self._get_workflow(session, workflow_id)
         if workflow is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ClinicalErrorDetail.WORKFLOW_NOT_FOUND,
-            )
+            raise EntityNotFoundError("Workflow", ClinicalErrorDetail.WORKFLOW_NOT_FOUND)
 
         author = await self._get_user_by_username(session, author_username)
         if author is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ClinicalErrorDetail.AUTHOR_NOT_FOUND,
-            )
+            raise EntityNotFoundError("User", ClinicalErrorDetail.AUTHOR_NOT_FOUND)
 
-        content_payload = self._serialize_dynamic_payload(request)
-        clinical_record = ClinicalRecord(
-            patient_id=workflow.patient_id,
-            author_id=author.id,
-            record_type=request.record_type,
-            title=request.title,
-            content=content_payload,
-            status=ClinicalRecordStatus.DRAFT,
-        )
+        clinical_record = self._build_clinical_record(workflow, author, request)
         session.add(clinical_record)
         await session.flush()
         await session.refresh(clinical_record)
-
-        return ClinicalRecordResponse(
-            id=clinical_record.id,
-            workflow_id=workflow_id,
-            patient_id=clinical_record.patient_id,
-            author_id=clinical_record.author_id,
-            record_type=clinical_record.record_type,
-            title=clinical_record.title,
-            content=clinical_record.content,
-            status=clinical_record.status,
-            created_at=clinical_record.created_at,
-        )
+        return self._to_response(clinical_record, workflow_id)
 
     async def build_workflow_pdf_context(
         self,
@@ -108,30 +77,14 @@ class ClinicalService(BaseService):
             ``WorkflowPdfContext`` for template rendering.
 
         Raises:
-            HTTPException: 404 when the workflow is not found.
+            EntityNotFoundError: When the workflow is not found.
         """
         workflow = await self._get_workflow_with_patient(session, workflow_id)
         if workflow is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ClinicalErrorDetail.WORKFLOW_NOT_FOUND,
-            )
+            raise EntityNotFoundError("Workflow", ClinicalErrorDetail.WORKFLOW_NOT_FOUND)
 
-        records = await self._get_patient_clinical_records(
-            session,
-            workflow.patient_id,
-        )
-        export_records = [
-            ClinicalRecordExportItem(
-                record_type=record.record_type,
-                title=record.title,
-                content=self._deserialize_content(record.content),
-                status=record.status.value,
-                created_at=record.created_at.isoformat(),
-            )
-            for record in records
-        ]
-
+        records = await self._get_patient_clinical_records(session, workflow.patient_id)
+        export_records = self._map_records_to_export_items(records)
         return WorkflowPdfContext(
             workflow_id=workflow.id,
             patient_id=workflow.patient_id,
@@ -141,6 +94,80 @@ class ClinicalService(BaseService):
             assigned_department=workflow.assigned_department,
             records=export_records,
         )
+
+    def _build_clinical_record(
+        self,
+        workflow: PatientWorkflow,
+        author: User,
+        request: DynamicClinicalRecordRequest,
+    ) -> ClinicalRecord:
+        """Construct a new clinical record ORM entity.
+
+        Args:
+            workflow: Target patient workflow.
+            author: Authoring user.
+            request: Dynamic clinical record payload.
+
+        Returns:
+            Unpersisted ``ClinicalRecord`` instance.
+        """
+        return ClinicalRecord(
+            patient_id=workflow.patient_id,
+            author_id=author.id,
+            record_type=request.record_type,
+            title=request.title,
+            content=self._serialize_dynamic_payload(request),
+            status=ClinicalRecordStatus.DRAFT,
+        )
+
+    def _to_response(
+        self,
+        clinical_record: ClinicalRecord,
+        workflow_id: int,
+    ) -> ClinicalRecordResponse:
+        """Map a persisted clinical record to a response DTO.
+
+        Args:
+            clinical_record: Persisted ORM entity.
+            workflow_id: Associated workflow identifier.
+
+        Returns:
+            API response DTO.
+        """
+        return ClinicalRecordResponse(
+            id=clinical_record.id,
+            workflow_id=workflow_id,
+            patient_id=clinical_record.patient_id,
+            author_id=clinical_record.author_id,
+            record_type=clinical_record.record_type,
+            title=clinical_record.title,
+            content=clinical_record.content,
+            status=clinical_record.status,
+            created_at=clinical_record.created_at,
+        )
+
+    def _map_records_to_export_items(
+        self,
+        records: list[ClinicalRecord],
+    ) -> list[ClinicalRecordExportItem]:
+        """Map ORM clinical records to PDF export DTOs.
+
+        Args:
+            records: Clinical record ORM instances.
+
+        Returns:
+            Export item list for template rendering.
+        """
+        return [
+            ClinicalRecordExportItem(
+                record_type=record.record_type,
+                title=record.title,
+                content=self._deserialize_content(record.content),
+                status=record.status.value,
+                created_at=record.created_at.isoformat(),
+            )
+            for record in records
+        ]
 
     async def _get_workflow(
         self,
@@ -174,7 +201,7 @@ class ClinicalService(BaseService):
         """
         statement = (
             select(PatientWorkflow)
-            .options(joinedload(PatientWorkflow.patient))
+            .options(selectinload(PatientWorkflow.patient))
             .where(PatientWorkflow.id == workflow_id)
         )
         result = await session.execute(statement)

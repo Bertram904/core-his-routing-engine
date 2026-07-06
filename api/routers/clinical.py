@@ -15,7 +15,7 @@ from application.dtos.clinical_dto import (
 )
 from application.services.clinical_service import ClinicalService
 from core.constants import PdfDefaults
-from core.security import TokenPayload
+from domain.entities.token_payload import TokenPayload
 from domain.interfaces import IPdfGenerator
 from infrastructure.database import get_db_session
 

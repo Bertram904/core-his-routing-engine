@@ -1,4 +1,4 @@
-"""Async Redis connection manager for cache adapters."""
+"""Async Redis connection manager implementing ``IAsyncCacheClient``."""
 
 from functools import lru_cache
 from typing import Any
@@ -7,17 +7,11 @@ import redis.asyncio as aioredis
 from redis.asyncio import Redis
 
 from core.config import Settings, get_settings
+from domain.interfaces import IAsyncCacheClient
 
 
-class RedisManager:
-    """Encapsulated async Redis client lifecycle manager.
-
-    Provides lazy connection initialization and graceful teardown for
-    cache-oriented infrastructure adapters.
-
-    Attributes:
-        settings: Application settings supplying the Redis DSN.
-    """
+class RedisManager(IAsyncCacheClient):
+    """Encapsulated async Redis client lifecycle manager."""
 
     def __init__(self, settings: Settings) -> None:
         """Initialize the manager without eagerly connecting.
@@ -85,11 +79,11 @@ class RedisManager:
 _redis_manager: RedisManager | None = None
 
 
-def get_redis_manager() -> RedisManager:
-    """Return the process-wide ``RedisManager`` singleton.
+def get_redis_manager() -> IAsyncCacheClient:
+    """Return the process-wide cache client singleton.
 
     Returns:
-        Shared Redis manager instance.
+        ``IAsyncCacheClient`` implementation backed by Redis.
     """
     global _redis_manager
     if _redis_manager is None:
@@ -104,4 +98,6 @@ async def get_redis_client() -> Redis:
         Connected async ``Redis`` client.
     """
     manager = get_redis_manager()
-    return await manager.connect()
+    if isinstance(manager, RedisManager):
+        return await manager.connect()
+    raise RuntimeError("Redis manager implementation does not expose a raw client.")
