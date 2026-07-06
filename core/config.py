@@ -101,6 +101,11 @@ class Settings(BaseSettings):
     )
     db_echo: bool = Field(default=False, alias="DB_ECHO")
 
+    encryption_key: SecretStr = Field(
+        default=SecretStr("MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="),
+        alias="ENCRYPTION_KEY",
+    )
+
     @field_validator("environment", mode="before")
     @classmethod
     def _normalize_environment(cls, value: str | Environment) -> Environment:
@@ -165,6 +170,15 @@ class Settings(BaseSettings):
                 f"{self.redis_port}/{self.redis_db}"
             )
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    @property
+    def encryption_key_value(self) -> str:
+        """Return the raw encryption key for cryptographic adapters.
+
+        Returns:
+            Decoded encryption key string.
+        """
+        return self.encryption_key.get_secret_value()
 
     def masked_database_url(self) -> str:
         """Return a log-safe database URL with credentials redacted.

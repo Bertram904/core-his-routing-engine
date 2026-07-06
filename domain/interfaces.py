@@ -91,6 +91,32 @@ class IRepository(ABC, Generic[EntityT, IdentifierT]):
         """
 
 
+class IEncryptionStrategy(ABC):
+    """Contract for symmetric application-level field encryption."""
+
+    @abstractmethod
+    def encrypt(self, plaintext: str) -> str:
+        """Encrypt a plaintext string for persistence.
+
+        Args:
+            plaintext: Raw sensitive value.
+
+        Returns:
+            Encoded ciphertext safe for database storage.
+        """
+
+    @abstractmethod
+    def decrypt(self, ciphertext: str) -> str:
+        """Decrypt a previously encrypted ciphertext.
+
+        Args:
+            ciphertext: Stored encrypted value.
+
+        Returns:
+            Original plaintext string.
+        """
+
+
 class IPdfGenerator(ABC):
     """Contract for generating PDF documents from structured data."""
 
