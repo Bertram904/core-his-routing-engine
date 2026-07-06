@@ -1,0 +1,126 @@
+# =============================================================================
+# Core HIS — Docker Compose (DRY via YAML anchors)
+# =============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-restart-policy: &restart-unless-stopped
+  restart: unless-stopped
+
+x-postgres-credentials: &postgres-credentials
+  POSTGRES_USER: his_user
+  POSTGRES_PASSWORD: his_password
+  POSTGRES_DB: his_db
+
+x-app-environment: &app-environment
+  PYTHONPATH: /app
+  APP_NAME: Core HIS
+  APP_VERSION: "0.1.0"
+  ENVIRONMENT: production
+  DEBUG: "false"
+  API_PREFIX: /api/v1
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: his_user
+  POSTGRES_PASSWORD: his_password
+  POSTGRES_DB: his_db
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  DB_POOL_SIZE: "10"
+  DB_MAX_OVERFLOW: "20"
+  DB_POOL_TIMEOUT_SECONDS: "30"
+  DB_ECHO: "false"
+  ENCRYPTION_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+  JWT_SECRET_KEY: change-me-in-production-jwt-secret-key
+  JWT_ALGORITHM: HS256
+  JWT_EXPIRE_MINUTES: "30"
+  AUTH_CACHE_TTL_SECONDS: "3600"
+  ROUTING_RULES_CACHE_TTL_SECONDS: "1800"
+
+services:
+  postgres:
+    <<: *restart-unless-stopped
+    image: postgres:16-alpine
+    container_name: his-postgres
+    logging: *default-logging
+    environment:
+      <<: *postgres-credentials
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U his_user -d his_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    <<: *restart-unless-stopped
+    image: redis:7-alpine
+    container_name: his-redis
+    logging: *default-logging
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    <<: *restart-unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: core-his-api:latest
+    container_name: his-api
+    logging: *default-logging
+    environment:
+      <<: *app-environment
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  # Optional load-test runner (profile: loadtest)
+  jmeter:
+    profiles: ["loadtest"]
+    image: justb4/jmeter:5.6.3
+    container_name: his-jmeter
+    logging: *default-logging
+    volumes:
+      - ./jmeter:/test
+      - ./jmeter/results:/results
+    environment:
+      TARGET_HOST: api
+      TARGET_PORT: "8000"
+    depends_on:
+      api:
+        condition: service_healthy
+    command: >
+      -n -t /test/core-his-load-test.jmx
+      -l /results/results.jtl
+      -e -o /results/html-report
+      -JTARGET_HOST=api
+      -JTARGET_PORT=8000
+
+volumes:
+  postgres_data:

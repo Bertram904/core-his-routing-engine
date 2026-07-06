@@ -9,12 +9,12 @@ from application.dtos.reception_dto import (
     ReceptionIntakeResult,
     RoutingContextDto,
 )
-from application.services.base_service import BaseService, IReceptionService
+from application.services.base_service import IReceptionService
 from application.services.interfaces import IRoutingEngine
 from domain.models import Patient
 
 
-class ReceptionService(BaseService, IReceptionService):
+class ReceptionService(IReceptionService):
     """Handles reception auto-populate and intake orchestration."""
 
     def __init__(self, routing_engine: IRoutingEngine) -> None:

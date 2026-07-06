@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Git & IDE
+.git/
+.gitignore
+.idea/
+.vscode/
+*.md
+
+# Tests & tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Docker (not needed inside image context optimization)
+docker-compose*.yml
+Dockerfile*
+
+# JMeter artifacts
+jmeter/results/
