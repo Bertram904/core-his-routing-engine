@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Clinical Workflow Report — #{{ workflow_id }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 32px; color: #1a1a1a; }
+        h1 { color: #0b5ed7; border-bottom: 2px solid #0b5ed7; padding-bottom: 8px; }
+        h2 { margin-top: 28px; color: #333; }
+        .meta { margin-bottom: 20px; }
+        .meta dt { font-weight: bold; float: left; width: 180px; }
+        .meta dd { margin: 0 0 8px 180px; }
+        .record { border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+        .record h3 { margin-top: 0; color: #0b5ed7; }
+        pre { background: #f6f8fa; padding: 12px; border-radius: 4px; overflow-x: auto; }
+        .empty { color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>Clinical Workflow Report</h1>
+
+    <dl class="meta">
+        <dt>Workflow ID</dt><dd>{{ workflow_id }}</dd>
+        <dt>Patient ID</dt><dd>{{ patient_id }}</dd>
+        <dt>Patient Name</dt><dd>{{ patient_name }}</dd>
+        <dt>Current Stage</dt><dd>{{ current_stage }}</dd>
+        <dt>Status</dt><dd>{{ workflow_status }}</dd>
+        <dt>Department</dt><dd>{{ assigned_department or "N/A" }}</dd>
+    </dl>
+
+    <h2>Clinical Records</h2>
+    {% if records %}
+        {% for record in records %}
+        <div class="record">
+            <h3>{{ record.title }} ({{ record.record_type }})</h3>
+            <p><strong>Status:</strong> {{ record.status }} |
+               <strong>Created:</strong> {{ record.created_at }}</p>
+            <pre>{{ record.content | tojson(indent=2) }}</pre>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p class="empty">No clinical records available for this workflow.</p>
+    {% endif %}
+</body>
+</html>
