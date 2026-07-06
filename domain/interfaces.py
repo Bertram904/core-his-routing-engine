@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
+from domain.constants import PaginationDefaults
+
 EntityT = TypeVar("EntityT")
 IdentifierT = TypeVar("IdentifierT")
 
@@ -33,8 +35,8 @@ class IRepository(ABC, Generic[EntityT, IdentifierT]):
     async def get_all(
         self,
         *,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int = PaginationDefaults.SKIP,
+        limit: int = PaginationDefaults.LIMIT,
     ) -> list[EntityT]:
         """Retrieve a paginated collection of entities.
 
@@ -88,6 +90,32 @@ class IRepository(ABC, Generic[EntityT, IdentifierT]):
 
         Returns:
             ``True`` if the entity exists, otherwise ``False``.
+        """
+
+
+class IEncryptionStrategy(ABC):
+    """Contract for symmetric application-level field encryption."""
+
+    @abstractmethod
+    def encrypt(self, plaintext: str) -> str:
+        """Encrypt a plaintext string for persistence.
+
+        Args:
+            plaintext: Raw sensitive value.
+
+        Returns:
+            Encoded ciphertext safe for database storage.
+        """
+
+    @abstractmethod
+    def decrypt(self, ciphertext: str) -> str:
+        """Decrypt a previously encrypted ciphertext.
+
+        Args:
+            ciphertext: Stored encrypted value.
+
+        Returns:
+            Original plaintext string.
         """
 
 
