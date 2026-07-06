@@ -76,3 +76,18 @@ class RoutingCacheDefaults:
     """Default TTL for cached routing rule sets."""
 
     TTL_SECONDS: Final[int] = 1800
+
+
+class PdfDefaults:
+    """PDF generation defaults."""
+
+    MEDIA_TYPE: Final[str] = "application/pdf"
+    CLINICAL_WORKFLOW_TEMPLATE: Final[str] = "clinical_workflow"
+    TEMPLATE_EXTENSION: Final[str] = ".html"
+
+
+class ClinicalErrorDetail:
+    """Clinical workflow error messages."""
+
+    WORKFLOW_NOT_FOUND: Final[str] = "Workflow not found"
+    AUTHOR_NOT_FOUND: Final[str] = "Author user not found"

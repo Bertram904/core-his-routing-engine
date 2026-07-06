@@ -7,12 +7,14 @@ from sqlalchemy import select
 from core.security import get_password_hasher
 from domain.models import (
     Patient,
+    PatientWorkflow,
     Permission,
     Role,
     RolePermission,
     RoutingRule,
     User,
     WorkflowStage,
+    WorkflowStatus,
 )
 from infrastructure.database import Base, get_database_manager
 import domain.models  # noqa: F401 — register ORM models with metadata
@@ -63,6 +65,16 @@ async def seed() -> None:
         patient.identity_number = "001234567890"
         patient.phone = "0901234567"
         session.add(patient)
+        await session.flush()
+
+        session.add(
+            PatientWorkflow(
+                patient_id=patient.id,
+                current_stage=WorkflowStage.REGISTRATION,
+                status=WorkflowStatus.IN_PROGRESS,
+                assigned_department="reception",
+            )
+        )
 
         session.add_all(
             [
